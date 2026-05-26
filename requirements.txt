@@ -1,0 +1,20 @@
+# News Crew - 전체 의존성
+# 파서
+feedparser>=6.0.0
+beautifulsoup4>=4.12.0
+requests>=2.31.0
+
+# 데이터베이스
+SQLAlchemy>=2.0.0
+
+# 스케줄러
+APScheduler>=3.10.0
+
+# 텔레그램
+python-telegram-bot==21.0
+
+# 번역 (비동기 HTTP)
+aiohttp>=3.9.0
+
+# 환경변수
+python-dotenv>=1.0.0
