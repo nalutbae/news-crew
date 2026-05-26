@@ -261,7 +261,7 @@ def run():
     logger.info("스케줄러 시작 (Ctrl+C로 종료)")
     try:
         scheduler.start()
-    except (KeyboardError, SystemExit):
+    except (KeyboardInterrupt, SystemExit):
         logger.info("스케줄러 종료")
     finally:
         scheduler.shutdown(wait=False)
