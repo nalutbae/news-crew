@@ -16,6 +16,7 @@ from sqlalchemy.orm import Session
 from models import Feed, Article, get_session, get_engine
 from parsers import get_parser, ParseResult
 from config import VALID_CRAWL_INTERVALS
+from anti_bot import install_cloudscraper
 
 logger = logging.getLogger(__name__)
 
