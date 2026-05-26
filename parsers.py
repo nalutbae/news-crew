@@ -139,13 +139,22 @@ class WebParser(BaseFeedParser):
     # 도메인별 CSS 셀렉터 설정
     DOMAIN_SELECTORS: Dict[str, dict] = {
         'mfa.gov.cn': {
-            'list_link': 'a[href^="./"]',          # ./YYYYMM/tYYYYMMDD_ID.shtml
-            'list_link_pattern': r'^\./\d{6}/',   # ./YYYYMM/ 형식만 매칭 (인덱스 ./ 제외)
-            'detail_title': '.news-title',          # 기사 제목 클래스
-            'detail_content': '.news-details',       # 기사 본문 클래스
-            'detail_date': '.news-foot',             # 기사 하단 날짜
+            'list_link': 'a',                          # 모든 <a> 태그에서 후보 수집
+            'list_link_pattern': r'^\./\d{6}/',       # ./YYYYMM/ 형식만 매칭 (인덱스 ./ 제외)
+            'detail_title': '.news-title h1',           # 기사 제목 (h1 직접 선택)
+            'detail_content': '.news-details',          # 기사 본문 클래스
+            'detail_date': '.news-title .time span',   # 기사 날짜/시간
         },
     }
+    
+    # 제목 정제용 정규식 패턴
+    _NOISE_PATTERNS = [
+        re.compile(r'\s*【[^】]*】\s*'),          # 【中大校】【打印】 등 꺾쇠 괄호 노이즈
+        re.compile(r'\s*（\d{4}-\d{2}-\d{2}）\s*'),  # （2026-05-25） 날짜+괄호
+        re.compile(r'\s*\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}\s*'),  # 2026-05-25 17:30 날짜+시간
+        re.compile(r'\s*打印\s*'),                # "打印" (인쇄) 버튼 텍스트
+        re.compile(r'\s*[中大校小]+\s*'),          # 글자크기 버튼 텍스트 (중대소)
+    ]
     
     def __init__(self, feed_url: str, feed_name: str = '', language: str = 'en',
                  list_link_selector: str = None, detail_title_selector: str = None,
@@ -165,6 +174,20 @@ class WebParser(BaseFeedParser):
         self.list_link_pattern = domain_config.get('list_link_pattern')  # 정규식 패턴 (선택사항)
         self.detail_title_selector = detail_title_selector or domain_config.get('detail_title', 'h1')
         self.detail_content_selector = detail_content_selector or domain_config.get('detail_content', 'article, .content, .post')
+    
+    @classmethod
+    def _clean_title(cls, title: str) -> str:
+        """
+        제목에서 노이즈 제거
+        
+        - 【中大校】打印 (글자크기/인쇄 버튼 텍스트)
+        - （2026-05-25） (리스트 페이지 링크에 포함된 날짜)
+        - 2026-05-25 17:30 (상세 페이지에 포함된 날짜+시간)
+        """
+        cleaned = title
+        for pattern in cls._NOISE_PATTERNS:
+            cleaned = pattern.sub('', cleaned)
+        return cleaned.strip()
     
     def _extract_domain(self, url: str) -> str:
         """URL에서 도메인 추출"""
@@ -278,7 +301,7 @@ class WebParser(BaseFeedParser):
                             continue
                     links.append({
                         'url': href,
-                        'title': a_tag.get_text(strip=True) or '',
+                        'title': self._clean_title(a_tag.get_text(strip=True) or ''),
                     })
             
             logger.info(f"리스트에서 {len(links)}개 링크 발견 ({self.feed_url})")
@@ -296,17 +319,30 @@ class WebParser(BaseFeedParser):
                     result.errors.append(f"상세 페이지 가져오기 실패: {link_info['url']}")
                     continue
                 
-                # 제목
+                # 제목: 상세 페이지 .news-title h1 우선, 폴백으로 리스트 제목 사용
                 title_el = detail_soup.select_one(self.detail_title_selector)
-                title = title_el.get_text(strip=True) if title_el else link_info.get('title', '')
+                if title_el:
+                    title = title_el.get_text(strip=True)
+                else:
+                    title = link_info.get('title', '')
+                # 제목 정제: 노이즈(날짜, 글자크기 버튼, 인쇄 버튼) 제거
+                title = self._clean_title(title)
                 
                 # 내용
                 content_el = detail_soup.select_one(self.detail_content_selector)
                 content = ''
                 if content_el:
-                    # 불필요한 태그 제거
+                    # .news-details 내부 노이즈 태그 제거
+                    # - .news-title (제목 중복)
+                    # - .action (글자크기/인쇄/공유 버튼)
+                    # - .time (날짜/시간 — 본문 아님)
+                    # - script, style, nav, footer 일반 노이즈
                     for tag in content_el.find_all(['script', 'style', 'nav', 'footer']):
                         tag.decompose()
+                    for selector in ['.news-title', '.action', '.time']:
+                        noise_el = content_el.select_one(selector)
+                        if noise_el:
+                            noise_el.decompose()
                     content = str(content_el)
                 
                 item = {
