@@ -15,7 +15,7 @@ from sqlalchemy.orm import Session
 
 from models import Feed, Article, get_session, get_engine
 from parsers import get_parser, ParseResult
-from config import VALID_CRAWL_INTERVALS, MAX_ARTICLES_PER_FEED
+from config import VALID_CRAWL_INTERVALS, MAX_ARTICLES_PER_FEED, MAX_ARTICLE_AGE_DAYS
 from anti_bot import install_cloudscraper
 
 logger = logging.getLogger(__name__)
@@ -206,9 +206,10 @@ class NewsCrawler:
     
     def _save_article(self, feed: Feed, item: dict) -> Optional[Article]:
         """
-        아티클을 DB에 저장 (중복 체크)
+        아티클을 DB에 저장 (중복 체크 + 날짜 필터)
         
         (feed_id, url) UNIQUE 제약으로 중복 방지
+        MAX_ARTICLE_AGE_DAYS보다 오래된 기사는 저장하지 않음
         """
         url = item.get('url', '')
         title = item.get('title', '')
@@ -217,6 +218,16 @@ class NewsCrawler:
         if not url or not title:
             logger.debug(f"URL 또는 제목 누락, 건너뜀")
             return None
+        
+        # 날짜 필터: 너무 오래된 기사는 제외
+        published_at = item.get('published_at')
+        if published_at:
+            age = (datetime.utcnow() - published_at).days
+            if age > MAX_ARTICLE_AGE_DAYS:
+                logger.debug(
+                    f"오래된 기사 건너뜀 ({age}일 전, 제한={MAX_ARTICLE_AGE_DAYS}일): {title[:50]}"
+                )
+                return None
         
         # 중복 체크
         existing = self.session.query(Article).filter(
