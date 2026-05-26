@@ -48,8 +48,8 @@ DEFAULT_FEEDS = [
         'hashtag': '중국',
     },
     {
-        'name': '중국외교부',
-        'url': 'https://www.mfa.gov.cn/wjb/wjbzwd/wjbxw/',
+        'name': '중국외교부 대변인 브리핑',
+        'url': 'https://www.mfa.gov.cn/fyrbt_673021/jzhsl_673025/',
         'feed_type': 'web',
         'language': 'zh',
         'hashtag': '중국',

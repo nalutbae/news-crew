@@ -63,7 +63,7 @@ def _split_text(text: str, max_chars: int = MAX_CHARS_PER_REQUEST) -> list:
             if len(para) > max_chars:
                 import re
                 # 페르시아어/중국어 문장 구분자 포함
-                sentences = re.split(r'(?<=[.!?。！？؟。])\s*', para)
+                sentences = re.split(r'(?<=[.!?。！？؟])\s*', para)
                 sent_chunk = ''
                 for sent in sentences:
                     if len(sent_chunk) + len(sent) + 1 <= max_chars:
