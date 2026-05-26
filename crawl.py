@@ -15,10 +15,54 @@ from sqlalchemy.orm import Session
 
 from models import Feed, Article, get_session, get_engine
 from parsers import get_parser, ParseResult
-from config import VALID_CRAWL_INTERVALS
+from config import VALID_CRAWL_INTERVALS, MAX_ARTICLES_PER_FEED
 from anti_bot import install_cloudscraper
 
 logger = logging.getLogger(__name__)
+
+
+def prune_old_articles(session: Session, feed_id: int, keep: int = MAX_ARTICLES_PER_FEED) -> int:
+    """
+    피드별 오래된 아티클 정리 — 최근 keep개만 유지
+    
+    Pi 2 SD 마모 방지: 오래된 아티클을 삭제해 DB 크기를 일정하게 유지.
+    VACUUM은 자동으로 실행하지 않음 (SD 쓰기 최소화).
+    
+    Args:
+        session: DB 세션
+        feed_id: 피드 ID
+        keep: 유지할 아티클 수 (기본값: 50)
+    
+    Returns:
+        삭제된 아티클 수
+    """
+    # 해당 피드의 전체 아티클 수
+    total = session.query(Article).filter(Article.feed_id == feed_id).count()
+    
+    if total <= keep:
+        return 0
+    
+    # keep번째 아티클의 ID = 이 ID 이상은 유지
+    keep_from = (
+        session.query(Article.id)
+        .filter(Article.feed_id == feed_id)
+        .order_by(Article.id.desc())
+        .offset(keep - 1)
+        .first()
+    )
+    
+    if not keep_from:
+        return 0
+    
+    # keep_from 미만 아티클 일괄 삭제
+    deleted = session.query(Article).filter(
+        Article.feed_id == feed_id,
+        Article.id < keep_from[0],
+    ).delete(synchronize_session='fetch')
+    
+    session.commit()
+    logger.info(f"피드 ID={feed_id}: 아티클 정리 {deleted}개 삭제 (유지: {keep}개)")
+    return deleted
 
 
 def compute_translation_hash(title: str, content: str) -> str:
@@ -151,6 +195,11 @@ class NewsCrawler:
         # 피드 last_checked 업데이트
         feed.last_checked = datetime.utcnow()
         self.session.commit()
+        
+        # 피드별 아티클 정리 (Pi 2 DB 크기 관리)
+        pruned = prune_old_articles(self.session, feed.id)
+        if pruned:
+            logger.debug(f"피드 {feed.name}: {pruned}개 오래된 아티클 정리됨")
         
         logger.info(f"피드 크롤링 완료: {feed.name} - 신규 {len(new_articles)}개 / 전체 {len(result.items)}개")
         return new_articles

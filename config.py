@@ -20,6 +20,15 @@ VALID_CRAWL_INTERVALS = [5, 10, 15, 30, 60, 120, 360, 720, 1440]
 # 기본 crawl_interval (분)
 DEFAULT_CRAWL_INTERVAL = 5
 
+# 피드별 유지할 최대 아티클 수 (Pi 2 SD 마모 방지)
+MAX_ARTICLES_PER_FEED = int(os.getenv('MAX_ARTICLES_PER_FEED', '50'))
+
+# Pi 2 모드: 환경변수로 플래그 설정 (deploy 스크립트에서 사용)
+PI2_MODE = os.getenv('PI2_MODE', 'auto')  # auto|on|off
+# auto: /dev/shm 존재 여부로 자동 판단
+# on: Pi 2 최적화 강제 적용
+# off: 일반 모드
+
 
 @dataclass
 class SchedulerConfig:
@@ -50,17 +59,18 @@ class TranslationConfig:
     provider: str = os.getenv('TRANSLATION_PROVIDER', 'google')  # google (비공식, 무료)
     target_lang: str = 'ko'
     max_retries: int = 3
-    chunk_size: int = 4500  # Google Translate 안전 한도
+    chunk_size: int = int(os.getenv('TRANSLATION_CHUNK_SIZE', '3000'))  # Pi 2: 3000 (메모리 절약)
 
 
 @dataclass
 class CrawlerConfig:
     """크롤러 설정"""
-    request_timeout: int = 30       # HTTP 요청 타임아웃(초)
+    request_timeout: int = int(os.getenv('CRAWL_REQUEST_TIMEOUT', '30'))  # HTTP 요청 타임아웃(초)
     user_agent: str = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-    max_concurrent: int = 3         # 동시 피드 크롤링 수
+    max_concurrent: int = int(os.getenv('CRAWL_MAX_CONCURRENT', '1'))  # Pi 2: 1 (순차 크롤링)
     retry_on_network_error: bool = True
     max_retries: int = 2
+    max_response_bytes: int = int(os.getenv('CRAWL_MAX_RESPONSE_BYTES', str(1024 * 1024)))  # 1MB (Pi 2 메모리)
 
 
 @dataclass

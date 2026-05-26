@@ -17,6 +17,7 @@
 
 import logging
 import random
+import time
 from typing import Optional
 
 logger = logging.getLogger(__name__)
@@ -43,8 +44,10 @@ USER_AGENTS = [
     'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Safari/605.1.15',
 ]
 
-# 전역 세션 캐시 (도메인별 세션 유지)
-_sessions = {}
+# 전역 세션 캐시 (도메인별 세션 유지, TTL 관리)
+_sessions = {}          # domain → session
+_session_timestamps = {}  # domain → last_used (epoch)
+_SESSION_TTL = 1800     # 30분 (Pi 2 메모리 관리)
 
 # cloudscraper 사용 가능 여부
 _CLOUDSCRAPER_AVAILABLE = False
@@ -63,10 +66,11 @@ def get_random_ua() -> str:
 
 def get_session(domain: str = None):
     """
-    도메인별 세션 반환 (봇 감지 회피)
+    도메인별 세션 반환 (봇 감지 회피 + TTL 만료)
 
     - cloudscraper가 설치된 경우: JavaScript 챌린지 자동 우회
     - 미설치 시: 일반 requests.Session + User-Agent 로테이션
+    - TTL 30분 초과 시 세션 close 후 새로 생성 (Pi 2 메모리 관리)
 
     Args:
         domain: 세션을 분리할 도메인 (선택). None이면 기본 세션.
@@ -75,8 +79,22 @@ def get_session(domain: str = None):
         requests.Session 또는 cloudscraper.CloudScraper 세션
     """
     cache_key = domain or '_default'
-
+    now = time.time()
+    
+    # TTL 만료 세션 정리 (Pi 2 메모리 관리)
     if cache_key in _sessions:
+        last_used = _session_timestamps.get(cache_key, 0)
+        if now - last_used > _SESSION_TTL:
+            logger.debug(f"세션 TTL 만료: domain={domain}, idle={now - last_used:.0f}s")
+            try:
+                _sessions[cache_key].close()
+            except Exception:
+                pass
+            del _sessions[cache_key]
+            _session_timestamps.pop(cache_key, None)
+    
+    if cache_key in _sessions:
+        _session_timestamps[cache_key] = now
         return _sessions[cache_key]
 
     if _CLOUDSCRAPER_AVAILABLE:
@@ -98,6 +116,7 @@ def get_session(domain: str = None):
     })
 
     _sessions[cache_key] = session
+    _session_timestamps[cache_key] = now
     logger.debug(f"새 세션 생성: domain={domain}, cloudscraper={_CLOUDSCRAPER_AVAILABLE}")
     return session
 
@@ -131,13 +150,14 @@ def fetch_with_rotation(url: str, timeout: int = 30, domain: str = None):
 
 def reset_sessions():
     """모든 캐시된 세션 초기화 (새로 시작 시 사용)"""
-    global _sessions
+    global _sessions, _session_timestamps
     for key, session in _sessions.items():
         try:
             session.close()
         except Exception:
             pass
     _sessions = {}
+    _session_timestamps = {}
     logger.info("모든 세션 초기화 완료")
 
 

@@ -1,0 +1,59 @@
+[Unit]
+Description=News Crew - RSS News Crawler for Telegram
+Documentation=https://github.com/nalutbae/news-crew
+After=network-online.target
+Wants=network-online.target
+
+# Pi 2 리소스 보호
+# - 시작 전 30초 대기: 부팅 시 다른 서비스가 네트워크/디스크를 선점할 때 CPU 경합 방지
+# - 종료 시 10초 타임아웃: SQLite WAL 체크포인트가 완료될 시간 확보
+
+[Service]
+Type=simple
+User=pi
+Group=pi
+
+# 작업 디렉토리
+WorkingDirectory=/home/pi/news-crew
+
+# Python 가상환경 실행
+ExecStart=/home/pi/news-crew/venv/bin/python -m main
+
+# Pi 2 환경 변수
+Environment=PI2_MODE=on
+Environment=DB_PATH=/home/pi/news-crew/news_crew.db
+Environment=LOG_DIR=/dev/shm/news-crew/logs
+Environment=LOG_LEVEL=INFO
+Environment=CRAWL_MAX_CONCURRENT=1
+Environment=CRAWL_MAX_RESPONSE_BYTES=1048576
+Environment=MAX_ARTICLES_PER_FEED=50
+
+# .env 파일에서 TELEGRAM_BOT_TOKEN, TELEGRAM_CHANNEL_ID 등 로드
+EnvironmentFile=-/home/pi/news-crew/.env
+
+# 재시작 정책 (Pi 2 네트워크 불안정 고려)
+Restart=on-failure
+RestartSec=60
+StartLimitIntervalSec=300
+StartLimitBurst=3
+
+# Pi 2 리소스 제한
+# 메모리: 512MB 제한 (1GB RAM의 절반, 시스템/다른 프로세스를 위한 여유)
+LimitNOFILE=1024
+
+# Graceful shutdown
+KillMode=mixed
+KillSignal=SIGTERM
+TimeoutStopSec=10
+
+# 보안 강화
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths=/home/pi/news-crew /dev/shm/news-crew
+PrivateTmp=true
+
+# SD 카드 보호: /home/pi/news-crew 외 쓰기 차단
+# 로그는 /dev/shm (tmpfs)에 기록, DB는 WorkingDirectory에만 기록
+
+[Install]
+WantedBy=multi-user.target

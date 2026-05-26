@@ -127,10 +127,11 @@ class WebParser(BaseFeedParser):
         return 'UTF-8'
 
     def _fetch_page(self, url: str, timeout: int = 30) -> Optional[BeautifulSoup]:
-        """페이지 가져오기 및 BeautifulSoup 파싱 (봇 감지 회피 지원)"""
+        """페이지 가져오기 및 BeautifulSoup 파싱 (봇 감지 회피 + 크기 제한 지원)"""
         try:
             # anti_bot 모듈에서 세션 가져오기 (있으면 cloudscraper, 없으면 requests)
             from anti_bot import get_session
+            from config import get_config
             session = get_session()
 
             headers = {
@@ -140,14 +141,22 @@ class WebParser(BaseFeedParser):
             response = session.get(url, headers=headers, timeout=timeout)
             response.raise_for_status()
 
+            # Pi 2 메모리 보호: 응답 크기 제한
+            content = response.content
+            max_bytes = get_config().crawler.max_response_bytes
+            if len(content) > max_bytes:
+                logger.warning(f"웹페이지 응답 크기 초과 ({len(content)} > {max_bytes}): {url}")
+                content = content[:max_bytes]
+
             # 인코딩 감지 후 디코딩
-            encoding = self._detect_encoding(response, response.content)
-            html = response.content.decode(encoding, errors='replace')
+            encoding = self._detect_encoding(response, content)
+            html = content.decode(encoding, errors='replace')
 
             return BeautifulSoup(html, 'html.parser')
 
         except ImportError:
             # anti_bot 없으면 일반 requests 사용
+            from config import get_config
             headers = {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
                 'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
@@ -156,8 +165,14 @@ class WebParser(BaseFeedParser):
             response = requests.get(url, headers=headers, timeout=timeout)
             response.raise_for_status()
 
-            encoding = self._detect_encoding(response, response.content)
-            html = response.content.decode(encoding, errors='replace')
+            content = response.content
+            max_bytes = get_config().crawler.max_response_bytes
+            if len(content) > max_bytes:
+                logger.warning(f"웹페이지 응답 크기 초과 ({len(content)} > {max_bytes}): {url}")
+                content = content[:max_bytes]
+
+            encoding = self._detect_encoding(response, content)
+            html = content.decode(encoding, errors='replace')
             return BeautifulSoup(html, 'html.parser')
 
         except Exception as e:

@@ -29,9 +29,18 @@ class RSSParser(BaseFeedParser):
             # anti_bot 지원: cloudscraper 세션으로 RSS 가져오기
             try:
                 from anti_bot import fetch_with_rotation
+                from config import get_config
                 response = fetch_with_rotation(self.feed_url, timeout=30)
                 if response and response.content:
-                    feed = feedparser.parse(response.content)
+                    # Pi 2 메모리 보호: 응답 크기 제한
+                    content = response.content
+                    max_bytes = get_config().crawler.max_response_bytes
+                    if len(content) > max_bytes:
+                        logger.warning(
+                            f"RSS 응답 크기 초과 ({len(content)} > {max_bytes}): {self.feed_url}"
+                        )
+                        content = content[:max_bytes]
+                    feed = feedparser.parse(content)
                 else:
                     # 폴백: 일반 feedparser
                     feed = feedparser.parse(self.feed_url)
