@@ -58,6 +58,9 @@ def crawl_job():
     크롤링 작업 (스케줄러에서 5분 간격 호출)
     
     전체 파이프라인: 크롤링 → 번역 → 텔레그램 전송 → DB 업데이트
+    
+    스케줄러는 5분마다 실행되지만, 각 피드의 crawl_interval에 따라
+    실제 크롤링 대상은 필터링됨 (due_only=True).
     """
     global _first_run
     
@@ -71,9 +74,10 @@ def crawl_job():
     logger.info("=" * 60)
     
     try:
-        # 1. 크롤링
+        # 1. 크롤링 (첫 실행: 전체, 이후: interval 도래 피드만)
         crawler = NewsCrawler(db_path=config.database.path)
-        new_articles = crawler.crawl_all()
+        due_only = not _first_run
+        new_articles = crawler.crawl_all(due_only=due_only)
         
         if not new_articles:
             logger.info("새로운 아티클 없음")
