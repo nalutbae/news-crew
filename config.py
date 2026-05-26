@@ -38,12 +38,11 @@ class TelegramConfig:
 
 @dataclass
 class TranslationConfig:
-    """번역 설정"""
-    api_key: str = os.getenv('MYMEMORY_API_KEY', '')
-    email: str = os.getenv('MYMEMORY_EMAIL', 'news-crew@example.com')
+    """번역 설정 — Google Translate 비공식 API (무료, 한도 없음)"""
+    provider: str = os.getenv('TRANSLATION_PROVIDER', 'google')  # google (비공식, 무료)
     target_lang: str = 'ko'
-    max_retries: int = 2
-    chunk_size: int = 500  # MyMemory 무료 한도
+    max_retries: int = 3
+    chunk_size: int = 4500  # Google Translate 안전 한도
 
 
 @dataclass
