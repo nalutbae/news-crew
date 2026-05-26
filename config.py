@@ -23,6 +23,9 @@ DEFAULT_CRAWL_INTERVAL = 5
 # 피드별 유지할 최대 아티클 수 (Pi 2 SD 마모 방지)
 MAX_ARTICLES_PER_FEED = int(os.getenv('MAX_ARTICLES_PER_FEED', '50'))
 
+# 아티클 최대 연령 (일) — 이보다 오래된 기사는 저장하지 않음
+MAX_ARTICLE_AGE_DAYS = int(os.getenv('MAX_ARTICLE_AGE_DAYS', '30'))
+
 # Pi 2 모드: 환경변수로 플래그 설정 (deploy 스크립트에서 사용)
 PI2_MODE = os.getenv('PI2_MODE', 'auto')  # auto|on|off
 # auto: /dev/shm 존재 여부로 자동 판단
