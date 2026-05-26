@@ -8,13 +8,14 @@
 
 import hashlib
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import List, Optional
 
 from sqlalchemy.orm import Session
 
 from models import Feed, Article, get_session, get_engine
 from parsers import get_parser, ParseResult
+from config import VALID_CRAWL_INTERVALS
 
 logger = logging.getLogger(__name__)
 
@@ -59,6 +60,58 @@ class NewsCrawler:
         feeds = self.session.query(Feed).filter(Feed.is_active == True).all()
         logger.info(f"활성 피드 {len(feeds)}개 조회됨")
         return feeds
+    
+    def get_due_feeds(self) -> List[Feed]:
+        """
+        크롤링 주기가 도래한 활성 피드만 조회
+        
+        조건: last_checked가 없거나, last_checked + crawl_interval(분) <= now
+        한국시간 자정(00:00 KST = 15:00 UTC 전일)을 기준으로 간격 계산.
+        
+        Returns:
+            크롤링이 필요한 Feed 리스트
+        """
+        now = datetime.utcnow()
+        
+        # 모든 활성 피드 조회
+        active_feeds = self.session.query(Feed).filter(Feed.is_active == True).all()
+        
+        due_feeds = []
+        skipped_feeds = []
+        
+        for feed in active_feeds:
+            # crawl_interval 유효성 검증
+            interval = feed.crawl_interval
+            if interval not in VALID_CRAWL_INTERVALS:
+                logger.warning(
+                    f"피드 '{feed.name}' 유효하지 않은 crawl_interval={interval}, "
+                    f"기본값({VALID_CRAWL_INTERVALS[0]})으로 처리"
+                )
+                interval = VALID_CRAWL_INTERVALS[0]
+            
+            if feed.last_checked is None:
+                # 한 번도 크롤링하지 않은 피드 → 항상 크롤링
+                due_feeds.append(feed)
+            else:
+                # 마지막 확인 시간 + interval이 현재 시간 이전이면 크롤링 대상
+                next_check = feed.last_checked + timedelta(minutes=interval)
+                if next_check <= now:
+                    due_feeds.append(feed)
+                else:
+                    remaining = (next_check - now).total_seconds() / 60
+                    skipped_feeds.append((feed.name, remaining))
+        
+        if skipped_feeds:
+            logger.debug(
+                f"interval 미도래 피드 {len(skipped_feeds)}개 건너뜀: "
+                + ", ".join(f"{n}({r:.0f}분 후)" for n, r in skipped_feeds)
+            )
+        
+        logger.info(
+            f"크롤링 대상 피드: {len(due_feeds)}/{len(active_feeds)}개 "
+            f"(건너뜀: {len(active_feeds) - len(due_feeds)}개)"
+        )
+        return due_feeds
     
     def crawl_feed(self, feed: Feed) -> List[Article]:
         """
@@ -147,18 +200,22 @@ class NewsCrawler:
         logger.info(f"신규 아티클 저장: [{feed.name}] {title[:50]}")
         return article
     
-    def crawl_all(self) -> List[Article]:
+    def crawl_all(self, due_only: bool = True) -> List[Article]:
         """
-        모든 활성 피드 크롤링
+        활성 피드 크롤링
+        
+        Args:
+            due_only: True면 interval이 도래한 피드만 크롤링 (기본값)
+                     False면 모든 활성 피드 크롤링 (첫 실행 등)
         
         Returns:
             새로 발견된 전체 Article 리스트
         """
         all_new = []
-        feeds = self.get_active_feeds()
+        feeds = self.get_due_feeds() if due_only else self.get_active_feeds()
         
         if not feeds:
-            logger.warning("활성 피드가 없습니다")
+            logger.info("크롤링 대상 피드가 없습니다")
             return all_new
         
         logger.info(f"=== 크롤링 시작: {len(feeds)}개 피드 ===")

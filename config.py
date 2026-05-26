@@ -14,10 +14,18 @@ from dotenv import load_dotenv
 load_dotenv()
 
 
+# 유효한 crawl_interval 값 (분)
+VALID_CRAWL_INTERVALS = [5, 10, 15, 30, 60, 120, 360, 720, 1440]
+
+# 기본 crawl_interval (분)
+DEFAULT_CRAWL_INTERVAL = 5
+
+
 @dataclass
 class SchedulerConfig:
     """스케줄러 설정"""
     interval_minutes: int = int(os.getenv('CRAWL_INTERVAL_MINUTES', '5'))
+    default_crawl_interval: int = DEFAULT_CRAWL_INTERVAL  # 신규 피드 기본 crawl_interval
     coalesce: bool = True          # 누락된 작업 병합
     misfire_grace_time: int = 60   # 누락 허용 시간(초)
     max_instances: int = 1          # 동시 실행 인스턴스 수
@@ -117,5 +125,11 @@ def validate_config(config: AppConfig = None) -> list:
     
     if config.scheduler.interval_minutes < 1:
         errors.append("CRAWL_INTERVAL_MINUTES는 1 이상이어야 합니다")
+    
+    if config.scheduler.default_crawl_interval not in VALID_CRAWL_INTERVALS:
+        errors.append(
+            f"default_crawl_interval이 유효하지 않음: {config.scheduler.default_crawl_interval}. "
+            f"유효값: {VALID_CRAWL_INTERVALS}"
+        )
     
     return errors

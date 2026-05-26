@@ -30,6 +30,8 @@ class Feed(Base):
     language = Column(String(10), nullable=False, default='en',
                       comment='원본 언어 코드 (fa, zh, en 등)')
     hashtag = Column(String(100), nullable=True, comment='텔레그램 해시태그')
+    crawl_interval = Column(Integer, nullable=False, default=5,
+                             comment='크롤링 주기 (분). 유효값: 5,10,15,30,60,120,360,720,1440')
     last_checked = Column(DateTime, nullable=True, comment='마지막 확인 시간')
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
